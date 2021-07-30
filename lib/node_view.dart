@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:yaaamaca_flutter_client/node_embed.dart';
 import 'package:yaaamaca_flutter_client/user_view.dart';
 import 'package:yaaamaca_flutter_client/yaamaca_api.dart';
@@ -20,11 +24,14 @@ class _NodeViewState extends State<NodeView> {
   String? _type;
   int? _childCount;
 
+  WebSocketChannel? _events;
+
   @override
   void initState() {
     super.initState();
-    apiRequestGet("/node/${this.nodeId}?content=1").then((jr) {
-      if (jr == null) return;
+    apiRequestGet("/node/${this.nodeId}?content=1").then((js) {
+      if (js == null) return;
+      final jr = jsonDecode(js);
       setState(() {
         this._author = jr["author"];
         this._content = jr["content"];
@@ -33,9 +40,25 @@ class _NodeViewState extends State<NodeView> {
         this._showValues = true;
       });
     });
+    this._events = WebSocketChannel.connect(Uri.parse(
+      "ws://lolcalhorst:1269/node/${this.nodeId}/events",
+    ));
+    this._events!.stream.listen((event) {
+      print(event);
+    });
   }
 
-  void sendMessage(String content) {}
+  void sendMessage(String content) {
+    print("message sent!");
+    apiRequestPost(
+      "/create_node",
+      jsonEncode({
+        "parent": this.nodeId,
+        "content": content,
+        "type": "message",
+      }),
+    );
+  }
 
   Widget sendMessageWidget(BuildContext context) {
     final controller = TextEditingController();
@@ -116,9 +139,11 @@ class _NodeViewState extends State<NodeView> {
                       if (!snapshot.hasData) return LinearProgressIndicator();
                       if (snapshot.hasError)
                         return Text("something went wrong");
-                      List<dynamic>? snap = snapshot.data as List<dynamic>?;
-                      if (snap == null)
+                      final snapData = snapshot.data as String?;
+                      if (snapData == null)
                         return Text("something went wrong here");
+                      List<dynamic> snap =
+                          jsonDecode(snapData) as List<dynamic>;
                       if (snap.isEmpty)
                         return Text("something went wrong here aswell");
                       final childId = snap[0];

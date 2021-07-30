@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:yaaamaca_flutter_client/node_view.dart';
 import 'package:yaaamaca_flutter_client/user_view.dart';
@@ -23,8 +25,9 @@ class _NodeEmbedState extends State<NodeEmbed> {
   @override
   void initState() {
     super.initState();
-    apiRequestGet("/node/${this.nodeId}?content=1").then((jr) {
-      if (jr == null) return;
+    apiRequestGet("/node/${this.nodeId}?content=1").then((js) {
+      if (js == null) return;
+      final jr = jsonDecode(js);
       setState(() {
         this._author = jr["author"];
         this._content = jr["content"];

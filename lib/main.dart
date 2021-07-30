@@ -16,6 +16,7 @@ class App extends StatelessWidget {
       darkTheme: ThemeData(
         primarySwatch: Colors.purple,
         backgroundColor: Colors.grey.shade900,
+        dialogBackgroundColor: Colors.grey.shade800,
         scaffoldBackgroundColor: Colors.black,
         primaryColor: Colors.purple.shade400,
         textTheme: TextTheme(

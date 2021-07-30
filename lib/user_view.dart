@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:yaaamaca_flutter_client/yaamaca_api.dart';
 
@@ -24,11 +26,10 @@ class _UserEmbedState extends State<UserEmbed> {
   @override
   void initState() {
     super.initState();
-    apiRequestGet("/user/${this.userId}").then((jr) {
-      if (jr == null) return;
+    apiRequestGet("/user/${this.userId}").then((js) {
+      if (js == null) return;
+      final jr = jsonDecode(js);
       setState(() {
-        print(jr);
-        print(jr["name"]);
         this._name = jr["name"];
       });
     });
