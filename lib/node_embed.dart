@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:yaaamaca_flutter_client/config.dart';
 import 'package:yaaamaca_flutter_client/node_view.dart';
 import 'package:yaaamaca_flutter_client/user_view.dart';
 import 'package:yaaamaca_flutter_client/yaamaca_api.dart';
@@ -20,7 +21,7 @@ class _NodeEmbedState extends State<NodeEmbed> {
   String? _author;
   String? _content;
   String? _type;
-  int? _refCount;
+  int? _childCount;
 
   @override
   void initState() {
@@ -32,7 +33,7 @@ class _NodeEmbedState extends State<NodeEmbed> {
         this._author = jr["author"];
         this._content = jr["content"];
         this._type = jr["type"];
-        this._refCount = jr["ref_count"];
+        this._childCount = jr["child_count"];
         this._showValues = true;
       });
     });
@@ -66,7 +67,15 @@ class _NodeEmbedState extends State<NodeEmbed> {
             children: [
               Align(
                 alignment: Alignment.topLeft,
-                child: Text(content != null ? "$content " : "<loading>"),
+                child: Row(
+                  children: [
+                    Icon(
+                      typeIcon(this._type ?? ""),
+                      size: 18,
+                    ),
+                    Text(content != null ? " $content " : " <loading>"),
+                  ],
+                ),
               ),
               Row(
                 children: [
@@ -75,11 +84,43 @@ class _NodeEmbedState extends State<NodeEmbed> {
                       ? UserEmbed(userId: author, small: true)
                       : Text("<loading>"),
                 ],
-              )
+              ),
+              ...(typeShowEmbedChildren(this._type ?? "")
+                  ? [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(8.0, 0, 0, 0),
+                        child: embedChildren(),
+                      ),
+                    ]
+                  : [])
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget embedChildren() {
+    return ListView.builder(
+      scrollDirection: Axis.vertical,
+      shrinkWrap: true,
+      itemCount: this._childCount ?? 0,
+      itemBuilder: (context, i) {
+        return FutureBuilder(
+          future: apiRequestGet(
+              "/node/${this.nodeId}/children?index_from=$i&index_to=$i"),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) return LinearProgressIndicator();
+            if (snapshot.hasError) return Text("something went wrong");
+            final snapData = snapshot.data as String?;
+            if (snapData == null) return Text("something went wrong here");
+            List<dynamic> snap = jsonDecode(snapData) as List<dynamic>;
+            if (snap.isEmpty) return Text("something went wrong here aswell");
+            final childId = snap[0];
+            return NodeEmbed(nodeId: childId);
+          },
+        );
+      },
     );
   }
 }

@@ -1,11 +1,15 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:yaaamaca_flutter_client/config.dart';
 import 'package:yaaamaca_flutter_client/node_embed.dart';
+import 'package:yaaamaca_flutter_client/send_message.dart';
 import 'package:yaaamaca_flutter_client/user_view.dart';
 import 'package:yaaamaca_flutter_client/yaamaca_api.dart';
+import 'package:flutter/services.dart';
 
 class NodeView extends StatefulWidget {
   final String nodeId;
@@ -24,11 +28,9 @@ class _NodeViewState extends State<NodeView> {
   String? _type;
   int? _childCount;
 
-  WebSocketChannel? _events;
+  WebSocket? _events;
 
-  @override
-  void initState() {
-    super.initState();
+  void sendRequest() {
     apiRequestGet("/node/${this.nodeId}?content=1").then((js) {
       if (js == null) return;
       final jr = jsonDecode(js);
@@ -40,55 +42,21 @@ class _NodeViewState extends State<NodeView> {
         this._showValues = true;
       });
     });
-    this._events = WebSocketChannel.connect(Uri.parse(
-      "ws://lolcalhorst:1269/node/${this.nodeId}/events",
-    ));
-    this._events!.stream.listen((event) {
-      print(event);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    sendRequest();
+    WebSocket.connect(
+      "ws://lolcalhorst:1269/node/${this.nodeId}/subscribe",
+    ).then((ws) {
+      this._events = ws;
+      this._events!.listen((event) {
+        sendRequest();
+      });
+      this._events!.add("a");
     });
-  }
-
-  void sendMessage(String content) {
-    print("message sent!");
-    apiRequestPost(
-      "/create_node",
-      jsonEncode({
-        "parent": this.nodeId,
-        "content": content,
-        "type": "message",
-      }),
-    );
-  }
-
-  Widget sendMessageWidget(BuildContext context) {
-    final controller = TextEditingController();
-    return SizedBox(
-      width: MediaQuery.of(context).size.width,
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Row(
-          children: [
-            Flexible(
-              child: TextField(
-                autocorrect: true,
-                controller: controller,
-                onSubmitted: (value) {
-                  this.sendMessage(value);
-                  controller.clear();
-                },
-              ),
-            ),
-            IconButton(
-              onPressed: () {
-                this.sendMessage(controller.text);
-                controller.clear();
-              },
-              icon: Icon(Icons.send),
-            )
-          ],
-        ),
-      ),
-    );
   }
 
   @override
@@ -101,15 +69,21 @@ class _NodeViewState extends State<NodeView> {
     final author = this._author;
     final content = this._content;
     final type = this._type;
+    final reverse = typeReveseView(this._type ?? "");
 
     return Scaffold(
       appBar: AppBar(
-        actions: actions(context),
+        actions: appBarActions(context),
         title: Column(
           children: [
             Align(
               alignment: Alignment.topLeft,
-              child: Text(content != null ? "$content " : "<loading>"),
+              child: Row(
+                children: [
+                  Icon(typeIcon(this._type)),
+                  Text(content != null ? " $content " : " <loading>"),
+                ],
+              ),
             ),
             Row(
               children: [
@@ -125,13 +99,14 @@ class _NodeViewState extends State<NodeView> {
       body: Container(
         child: Column(
           children: [
-            type != null ? Text(type) : Text("<loading>"),
             Expanded(
               child: ListView.builder(
                 scrollDirection: Axis.vertical,
                 shrinkWrap: true,
                 itemCount: this._childCount ?? 0,
-                itemBuilder: (context, i) {
+                reverse: reverse,
+                itemBuilder: (context, j) {
+                  final i = reverse ? ((this._childCount ?? 0) - j - 1) : j;
                   return FutureBuilder(
                     future: apiRequestGet(
                         "/node/${this.nodeId}/children?index_from=$i&index_to=$i"),
@@ -153,49 +128,87 @@ class _NodeViewState extends State<NodeView> {
                 },
               ),
             ),
-            ...(this._type == "channel"
-                ? [this.sendMessageWidget(context)]
-                : [])
+            ...typeSendMessage(this._type ?? "")
+                ? [MessageSendWidget(nodeId: nodeId)]
+                : []
           ],
         ),
       ),
     );
   }
 
-  List<Widget> actions(BuildContext context) {
-    List<Widget> l = [];
-    if (this._type == "channel_group")
-      l.add(IconButton(
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (context) {
-              var name = "";
-              return AlertDialog(
-                content: Column(
-                  children: [
-                    Text("Please give your new channel a name."),
-                    TextField(
-                      autocorrect: false,
-                      onChanged: (value) => name = value,
-                    )
-                  ],
+  void createChannelDialog(BuildContext context, String type) {
+    showDialog(
+        context: context,
+        builder: (context) {
+          var name = "";
+          return AlertDialog(
+            content: Column(
+              children: [
+                Text("Please give your new channel a name."),
+                TextField(
+                  autocorrect: false,
+                  onChanged: (value) => name = value,
+                )
+              ],
+            ),
+            actions: [
+              TextButton(
+                child: Text("Create channel"),
+                onPressed: () {
+                  apiRequestPost(
+                    "/create_node",
+                    jsonEncode({
+                      "parent": this.nodeId,
+                      "content": name,
+                      "type": type,
+                    }),
+                  );
+                  Navigator.pop(context);
+                },
+              )
+            ],
+          );
+        });
+  }
+
+  List<Widget> appBarActions(BuildContext context) {
+    return [
+      PopupMenuButton<Function()>(
+        onSelected: (fn) => fn(),
+        itemBuilder: (context) {
+          List<PopupMenuItem<Function()>> l = [];
+          l.add(PopupMenuItem(
+            value: () {
+              Clipboard.setData(ClipboardData(text: this.nodeId));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Copied: ${this.nodeId}"),
+                  duration: Duration(seconds: 1),
                 ),
-                actions: [
-                  TextButton(
-                    child: Text("Create channel"),
-                    onPressed: () {
-                      // todo create a channel
-                      Navigator.pop(context);
-                    },
-                  )
-                ],
               );
             },
-          );
+            child: Text("Copy node id"),
+          ));
+          if (typeSendChannel(this._type ?? ""))
+            l.addAll([
+              PopupMenuItem(
+                value: () => createChannelDialog(context, "channel.message"),
+                child: Text("Create message channel"),
+              ),
+              PopupMenuItem(
+                value: () => createChannelDialog(context, "channel.voice"),
+                child: Text("Create voice channel"),
+              ),
+            ]);
+          if (typeSendChannelGroup(this._type ?? ""))
+            l.add(PopupMenuItem(
+              value: () => createChannelDialog(context, "channel_group"),
+              child: Text("Create channel group"),
+            ));
+          return l;
         },
-        icon: Icon(Icons.add),
-      ));
-    return l;
+      ),
+    ];
   }
 }

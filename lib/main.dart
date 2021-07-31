@@ -33,6 +33,9 @@ class App extends StatelessWidget {
         primaryIconTheme: IconThemeData(color: Colors.white),
         iconTheme: IconThemeData(color: Colors.white),
         cardTheme: CardTheme(color: Colors.grey.shade900),
+        popupMenuTheme: PopupMenuThemeData(
+          color: Colors.grey.shade800,
+        ),
       ),
       home: AppPage(title: 'yaaamaca'),
       debugShowCheckedModeBanner: false,
